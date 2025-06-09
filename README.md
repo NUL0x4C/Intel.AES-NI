@@ -12,13 +12,16 @@
 | **CTR** |    3/5   |     5/5     |      No     |       No       |
 | **GCM** |    4/5   |     5/5     |     Yes     |       No       |
 | **OCB** |    5/5   |     5/5     |     Yes     |       No       |
-| **XTS** (#) |    4/5   |     4/5     |     No (*)    |       No       |
-| **OFB** (#) |    2/5   |     4/5     |      No     |       No       |
 | **EAX** |    5/5   |     4/5     |     Yes     |       No       |
-| **LRW** (#) |    4/5   |     4/5     |      No     |       No       |
 
 
-* **(*) XTS provides confidentiality with a tweak (no built-in authentication).**
-* **(#) Not implemented yet**
 
 </br>
+
+**TODO:**
+* OFB
+* XTS
+* LRW
+* CCM
+* CMAC/GMAC
+* SIV
