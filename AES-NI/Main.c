@@ -219,6 +219,37 @@ int TestAes256OCB() {
 
 
 
+int TestAes256EAX() {
+    
+    TEST_HEADER_256("EAX");
+
+    unsigned __int64  uPlainTextSize    = strlen((char*)g_PlainText);
+    unsigned char*    pCipherText       = NULL;
+    unsigned char*    pPlainText        = NULL;
+    unsigned char     u8Tag[16]         = { 0 };
+    unsigned char     bEncrypted        = FALSE;
+    unsigned char     bDecrypted        = FALSE;
+
+    if (!(pCipherText = malloc(uPlainTextSize))) return -1;
+    if (!(pPlainText  = malloc(uPlainTextSize))) { free(pCipherText); return -1; }
+
+    Aes256EAXEncrypt(g_PlainText, uPlainTextSize, pCipherText, g_AesKey, g_AesNonce, u8Tag, &bEncrypted);
+    if (!bEncrypted) { free(pCipherText); free(pPlainText); return -1; }
+    printf("[EAX] Encryption successful\n");
+
+	// pCipherText[0] = 0xFF;       // Simulate a tampered ciphertext
+
+    Aes256EAXDecrypt(pCipherText, uPlainTextSize, pPlainText, g_AesKey, g_AesNonce, u8Tag, &bDecrypted);
+    if (!bDecrypted) { free(pCipherText); free(pPlainText); return -1; }
+    printf("[EAX] Decryption successful: %.*s\n", (int)uPlainTextSize, pPlainText);
+
+    free(pCipherText);
+    free(pPlainText);
+    return 0;
+
+}
+
+
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
@@ -400,6 +431,39 @@ int TestAes128OCB() {
 
 
 
+int TestAes128EAX() { 
+
+    TEST_HEADER_128("EAX");
+
+    unsigned __int64  uPlainTextSize   = strlen((char*)g_PlainText);
+    unsigned char*    pCipherText      = NULL;
+    unsigned char*    pPlainText       = NULL;
+    unsigned char     u8Tag[16]        = { 0 };
+    unsigned char     bEncrypted       = FALSE;
+    unsigned char     bDecrypted       = FALSE;
+
+    if (!(pCipherText = malloc(uPlainTextSize))) return -1;
+    if (!(pPlainText  = malloc(uPlainTextSize))) { free(pCipherText); return -1; }
+
+    Aes128EAXEncrypt(g_PlainText, uPlainTextSize, pCipherText, g_AesKey, g_AesNonce, u8Tag, &bEncrypted);
+    if (!bEncrypted) { free(pCipherText); free(pPlainText); return -1; }
+    printf("[EAX] Encryption successful\n");
+
+    // pCipherText[0] = 0xFF;       // Simulate a tampered ciphertext
+
+    Aes128EAXDecrypt(pCipherText, uPlainTextSize, pPlainText, g_AesKey, g_AesNonce, u8Tag, &bDecrypted);
+    if (!bDecrypted) { free(pCipherText); free(pPlainText); return -1; }
+    printf("[EAX] Decryption successful: %.*s\n", (int)uPlainTextSize, pPlainText);
+
+    free(pCipherText);
+    free(pPlainText);
+    return 0;
+}
+
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
 
 int main(void) 
 {
@@ -409,15 +473,17 @@ int main(void)
     if (TestAes256CTR() != 0) return 4;
     if (TestAes256GCM() != 0) return 5;
     if (TestAes256OCB() != 0) return 6;
-    
+    if (TestAes256EAX() != 0) return 7;
+
     printf("[*] All 256-bit AES tests passed!\n");
-    
-    if (TestAes128CBC() != 0) return 7;
-    if (TestAes128ECB() != 0) return 8;
-    if (TestAes128CFB() != 0) return 8;
-    if (TestAes128CTR() != 0) return 10;
-    if (TestAes128GCM() != 0) return 11;
-    if (TestAes128OCB() != 0) return 12;
+
+    if (TestAes128CBC() != 0) return 8;
+    if (TestAes128ECB() != 0) return 9;
+    if (TestAes128CFB() != 0) return 10;
+    if (TestAes128CTR() != 0) return 11;
+    if (TestAes128GCM() != 0) return 12;
+    if (TestAes128OCB() != 0) return 13;
+    if (TestAes128EAX() != 0) return 14;
 
     printf("[*] All 128-bit AES tests passed!\n");
     

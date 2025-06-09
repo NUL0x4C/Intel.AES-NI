@@ -282,6 +282,59 @@ void Aes128OCBDecrypt(
 );
 
 
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
+
+void Aes256EAXEncrypt(
+	IN		const unsigned char*	pPlainText,				// Pointer to the plaintext data to be encrypted
+	IN		unsigned __int64		uPlainTextSize,			// Size of the plaintext data in bytes 
+	IN		unsigned char*			pCipherText,			// Pointer to the buffer where the encrypted data will be stored (must be at least uPlainTextSize bytes long)
+	IN		unsigned char*			pAesKey, 				// Pointer to the AES key (must be 32 bytes)
+	IN		unsigned char*			pAesIv, 				// Pointer to the AES IV (must be 16 bytes)
+	IN		unsigned char*			pAuthTag,				// Pointer to the buffer where the authentication tag will be stored (must be at least 16 bytes long)
+	OUT		PBOOLEAN				pbEncrypted				// Pointer to a BOOLEAN variable that will be set to TRUE if encryption was successful
+);
+
+
+
+void Aes256EAXDecrypt(
+	IN		const unsigned char*	pCipherText,			// Pointer to the encrypted data to be decrypted
+	IN		unsigned __int64		uCipherTextSize,		// Size of the encrypted data in bytes 
+	IN		unsigned char*			pPlainText,				// Pointer to the buffer where the decrypted data will be stored (must be at least uCipherTextSize bytes long)
+	IN		unsigned char*			pAesKey, 				// Pointer to the AES key (must be 32 bytes)
+	IN		unsigned char*			pAesIv, 				// Pointer to the AES IV (must be 16 bytes)
+	IN		unsigned char*			pAuthTag,				// Pointer to the authentication tag (must be 16 bytes)
+	OUT		PBOOLEAN				pbDecrypted				// Pointer to a BOOLEAN variable that will be set to TRUE if decryption was successful
+);
+
+
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
+
+void Aes128EAXEncrypt(
+	IN		const unsigned char*	pPlainText,				// Pointer to the plaintext data to be encrypted
+	IN		unsigned __int64		uPlainTextSize,			// Size of the plaintext data in bytes 
+	IN		unsigned char*			pCipherText,			// Pointer to the buffer where the encrypted data will be stored (must be at least uPlainTextSize bytes long)
+	IN		unsigned char*			pAesKey, 				// Pointer to the AES key (must be 16 bytes)
+	IN		unsigned char*			pAesIv, 				// Pointer to the AES IV (must be 16 bytes)
+	IN		unsigned char*			pAuthTag,				// Pointer to the buffer where the authentication tag will be stored (must be at least 16 bytes long)
+	OUT		PBOOLEAN				pbEncrypted				// Pointer to a BOOLEAN variable that will be set to TRUE if encryption was successful
+);
+
+void Aes128EAXDecrypt(
+	IN		const unsigned char*	pCipherText,			// Pointer to the encrypted data to be decrypted
+	IN		unsigned __int64		uCipherTextSize,		// Size of the encrypted data in bytes 
+	IN		unsigned char*			pPlainText,				// Pointer to the buffer where the decrypted data will be stored (must be at least uCipherTextSize bytes long)
+	IN		unsigned char*			pAesKey, 				// Pointer to the AES key (must be 16 bytes)
+	IN		unsigned char*			pAesIv, 				// Pointer to the AES IV (must be 16 bytes)
+	IN		unsigned char*			pAuthTag,				// Pointer to the authentication tag (must be 16 bytes)
+	OUT		PBOOLEAN				pbDecrypted				// Pointer to a BOOLEAN variable that will be set to TRUE if decryption was successful
+);
+
+
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 

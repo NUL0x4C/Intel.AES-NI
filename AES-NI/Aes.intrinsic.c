@@ -1878,3 +1878,448 @@ void Aes128OCBDecrypt(IN const unsigned char* pCipherText, IN unsigned __int64 u
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
+
+static __m128i EaxMulAlpha(__m128i xmmT)
+{
+    __m128i xmmHi = _mm_srli_epi64(xmmT, 63);
+    __m128i xmmLo = _mm_slli_si128(xmmT, 1);
+    xmmHi = _mm_shuffle_epi32(xmmHi, _MM_SHUFFLE(2, 3, 0, 1));
+    xmmLo = _mm_xor_si128(xmmLo, _mm_and_si128(xmmHi, _mm_set_epi32(0x00000087, 0, 0, 0)));
+    return xmmLo;
+}
+
+
+static __m128i EaxComputeCmac256(const unsigned char* pData, unsigned __int64 uDataSize, const __m128i* pEncKeySchedule)
+{
+    __m128i xmmZero = _mm_setzero_si128();
+    __m128i xmmL = _mm_xor_si128(xmmZero, pEncKeySchedule[0]);
+
+    for (int iRound = 1; iRound < 14; ++iRound)
+        xmmL = _mm_aesenc_si128(xmmL, pEncKeySchedule[iRound]);
+
+	xmmL = _mm_aesenclast_si128(xmmL, pEncKeySchedule[14]);
+
+    __m128i xmmK1 = EaxMulAlpha(xmmL);
+    __m128i xmmK2 = EaxMulAlpha(xmmK1);
+
+    __m128i xmmX = _mm_setzero_si128();
+    unsigned __int64 uIndex = 0;
+
+    while (uIndex + 16 <= uDataSize) 
+    {
+        __m128i M = _mm_loadu_si128((const __m128i*)(pData + uIndex));
+        
+        xmmX = _mm_xor_si128(xmmX, M);
+        xmmX = _mm_xor_si128(xmmX, pEncKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 14; ++iRound)
+            xmmX = _mm_aesenc_si128(xmmX, pEncKeySchedule[iRound]);
+        
+        xmmX = _mm_aesenclast_si128(xmmX, pEncKeySchedule[14]);
+        uIndex += 16;
+    }
+
+    unsigned int uLeft = (unsigned int)(uDataSize - uIndex);
+    unsigned char u8Last[16] = { 0 };
+
+    if (uLeft == 16) 
+    {
+        _mm_storeu_si128((__m128i*)u8Last, _mm_loadu_si128((const __m128i*)(pData + uIndex)));
+
+        for (int i = 0; i < 16; ++i)
+            u8Last[i] ^= ((unsigned char*)&xmmK1)[i];
+    }
+    else 
+    {
+        for (unsigned i = 0; i < uLeft; ++i) 
+            u8Last[i] = pData[uIndex + i];
+        
+        u8Last[uLeft] = 0x80;
+        
+        for (int i = 0; i < 16; ++i) 
+            u8Last[i] ^= ((unsigned char*)&xmmK2)[i];
+    }
+
+
+    __m128i Mlast = _mm_loadu_si128((const __m128i*)u8Last);
+
+    xmmX = _mm_xor_si128(xmmX, Mlast);
+    xmmX = _mm_xor_si128(xmmX, pEncKeySchedule[0]);
+
+    for (int iRound = 1; iRound < 14; ++iRound)
+        xmmX = _mm_aesenc_si128(xmmX, pEncKeySchedule[iRound]);
+    
+    xmmX = _mm_aesenclast_si128(xmmX, pEncKeySchedule[14]);
+    
+    return xmmX;
+}
+
+
+void Aes256EAXEncrypt(IN const unsigned char* pPlainText, IN unsigned __int64 uPlainTextSize, IN unsigned char* pCipherText, IN unsigned char* pAesKey, IN unsigned char* pAesIv, IN unsigned char* pAuthTag, OUT PBOOLEAN pbEncrypted) {
+
+    if (!pbEncrypted) return;
+
+    *pbEncrypted = FALSE;
+
+    if (!pPlainText || !pCipherText || !pAesKey || !pAesIv) return;
+
+
+    __m128i xmmKeySchedule[15];
+    Aes256CBCKeyExpansion(pAesKey, xmmKeySchedule);
+
+    unsigned char u8Hdr0 = 0;
+    __m128i xmmTagN = EaxComputeCmac256(&u8Hdr0, 1, xmmKeySchedule);
+    __m128i xmmIvCmac = EaxComputeCmac256(pAesIv, 16, xmmKeySchedule);
+    xmmTagN = _mm_xor_si128(xmmTagN, xmmIvCmac);
+
+
+    __m128i xmmCtr = xmmTagN;
+    unsigned __int64 uIndex = 0;
+
+
+    while (uIndex + 16 <= uPlainTextSize) 
+    {
+        
+        unsigned int uCtrLow = _mm_extract_epi32(xmmCtr, 3) + 1;
+        xmmCtr = _mm_insert_epi32(xmmCtr, uCtrLow, 3);
+
+        __m128i xmmKS = _mm_xor_si128(xmmCtr, xmmKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 14; ++iRound)
+            xmmKS = _mm_aesenc_si128(xmmKS, xmmKeySchedule[iRound]);
+        
+        xmmKS = _mm_aesenclast_si128(xmmKS, xmmKeySchedule[14]);
+
+        __m128i xmmPT = _mm_loadu_si128((const __m128i*)(pPlainText + uIndex));
+        __m128i xmmCT = _mm_xor_si128(xmmPT, xmmKS);
+        
+        _mm_storeu_si128((__m128i*)(pCipherText + uIndex), xmmCT);
+
+        uIndex += 16;
+    }
+
+    if (uIndex < uPlainTextSize) 
+    {
+        unsigned int uBytesLeft = (unsigned int)(uPlainTextSize - uIndex);
+        unsigned int uCtrLow = _mm_extract_epi32(xmmCtr, 3) + 1;
+        
+        xmmCtr = _mm_insert_epi32(xmmCtr, uCtrLow, 3);
+
+        __m128i xmmKS = _mm_xor_si128(xmmCtr, xmmKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 14; ++iRound)
+            xmmKS = _mm_aesenc_si128(xmmKS, xmmKeySchedule[iRound]);
+        
+        xmmKS = _mm_aesenclast_si128(xmmKS, xmmKeySchedule[14]);
+
+        unsigned char u8Pad[16];
+        _mm_storeu_si128((__m128i*)u8Pad, xmmKS);
+        
+        for (unsigned int i = 0; i < uBytesLeft; ++i)
+            pCipherText[uIndex + i] = pPlainText[uIndex + i] ^ u8Pad[i];
+    }
+
+    unsigned char u8Hdr1 = 1;
+    __m128i xmmTagC = EaxComputeCmac256(&u8Hdr1, 1, xmmKeySchedule);
+    __m128i xmmCtCmac = EaxComputeCmac256(pCipherText, uPlainTextSize, xmmKeySchedule);
+    xmmTagC = _mm_xor_si128(xmmTagC, xmmCtCmac);
+
+    __m128i xmmTag = _mm_xor_si128(xmmTagN, xmmTagC);
+    _mm_storeu_si128((__m128i*)pAuthTag, xmmTag);
+
+    *pbEncrypted = TRUE;
+}
+
+
+void Aes256EAXDecrypt(IN const unsigned char* pCipherText, IN unsigned __int64 uCipherTextSize, IN unsigned char* pPlainText, IN unsigned char* pAesKey, IN unsigned char* pAesIv, IN unsigned char* pAuthTag, OUT PBOOLEAN pbDecrypted) {
+    
+    if (!pbDecrypted) return;
+    
+    *pbDecrypted = FALSE;
+    
+    if (!pCipherText || !pPlainText || !pAesKey || !pAesIv || uCipherTextSize == 0) return;
+    
+    __m128i xmmKeySchedule[15];
+    Aes256CBCKeyExpansion(pAesKey, xmmKeySchedule);
+
+    unsigned char u8Hdr0 = 0;
+    __m128i xmmTagN = EaxComputeCmac256(&u8Hdr0, 1, xmmKeySchedule);
+    __m128i xmmIvCmac = EaxComputeCmac256(pAesIv, 16, xmmKeySchedule);
+    xmmTagN = _mm_xor_si128(xmmTagN, xmmIvCmac);
+
+
+    unsigned char u8Hdr1 = 1;
+    __m128i xmmTagC = EaxComputeCmac256(&u8Hdr1, 1, xmmKeySchedule);
+    __m128i xmmCtCmac = EaxComputeCmac256(pCipherText, uCipherTextSize, xmmKeySchedule);
+    xmmTagC = _mm_xor_si128(xmmTagC, xmmCtCmac);
+
+    __m128i xmmExpected = _mm_xor_si128(xmmTagN, xmmTagC);
+    unsigned char u8Expected[16], u8Diff = 0;
+    _mm_storeu_si128((__m128i*)u8Expected, xmmExpected);
+    
+    for (int i = 0; i < 16; ++i)
+        u8Diff |= u8Expected[i] ^ pAuthTag[i];
+
+	if (u8Diff != 0) return;                                // Authentication Failed, Halt Decryption
+
+
+    __m128i xmmCtr = xmmTagN;
+    unsigned __int64 uIndex = 0;
+
+    while (uIndex + 16 <= uCipherTextSize) 
+    {
+        unsigned int uCtrLow = _mm_extract_epi32(xmmCtr, 3) + 1;
+        xmmCtr = _mm_insert_epi32(xmmCtr, uCtrLow, 3);
+
+        __m128i xmmKS = _mm_xor_si128(xmmCtr, xmmKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 14; ++iRound)
+            xmmKS = _mm_aesenc_si128(xmmKS, xmmKeySchedule[iRound]);
+        
+        xmmKS = _mm_aesenclast_si128(xmmKS, xmmKeySchedule[14]);
+
+        __m128i xmmCT = _mm_loadu_si128((const __m128i*)(pCipherText + uIndex));
+        __m128i xmmPT = _mm_xor_si128(xmmCT, xmmKS);
+        _mm_storeu_si128((__m128i*)(pPlainText + uIndex), xmmPT);
+
+        uIndex += 16;
+    }
+
+    if (uIndex < uCipherTextSize) 
+    {
+        unsigned int uBytesLeft = (unsigned int)(uCipherTextSize - uIndex);
+        unsigned int uCtrLow = _mm_extract_epi32(xmmCtr, 3) + 1;
+        
+        xmmCtr = _mm_insert_epi32(xmmCtr, uCtrLow, 3);
+
+        __m128i xmmKS = _mm_xor_si128(xmmCtr, xmmKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 14; ++iRound)
+            xmmKS = _mm_aesenc_si128(xmmKS, xmmKeySchedule[iRound]);
+        
+        xmmKS = _mm_aesenclast_si128(xmmKS, xmmKeySchedule[14]);
+
+        unsigned char u8Pad[16];
+        _mm_storeu_si128((__m128i*)u8Pad, xmmKS);
+        
+        for (unsigned int i = 0; i < uBytesLeft; ++i)
+            pPlainText[uIndex + i] = pCipherText[uIndex + i] ^ u8Pad[i];
+    }
+
+	*pbDecrypted = TRUE;
+}
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+
+
+static __m128i EaxComputeCmac128(const unsigned char* pData, unsigned __int64 uDataSize, const __m128i* pEncKeySchedule)
+{
+    __m128i xmmZero = _mm_setzero_si128();
+    __m128i xmmL = _mm_xor_si128(xmmZero, pEncKeySchedule[0]);
+    
+    for (int iRound = 1; iRound < 10; ++iRound)
+        xmmL = _mm_aesenc_si128(xmmL, pEncKeySchedule[iRound]);
+    
+    xmmL = _mm_aesenclast_si128(xmmL, pEncKeySchedule[10]);
+
+    __m128i xmmK1 = EaxMulAlpha(xmmL);
+    __m128i xmmK2 = EaxMulAlpha(xmmK1);
+
+    __m128i xmmX = _mm_setzero_si128();
+    unsigned __int64 uIndex = 0;
+    
+    while (uIndex + 16 <= uDataSize) 
+    {
+        __m128i xmmM = _mm_loadu_si128((const __m128i*)(pData + uIndex));
+        
+        xmmX = _mm_xor_si128(xmmX, xmmM);
+        xmmX = _mm_xor_si128(xmmX, pEncKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 10; ++iRound)
+            xmmX = _mm_aesenc_si128(xmmX, pEncKeySchedule[iRound]);
+        
+        xmmX = _mm_aesenclast_si128(xmmX, pEncKeySchedule[10]);
+        uIndex += 16;
+    }
+
+    unsigned int    uLeft = (unsigned int)(uDataSize - uIndex);
+    unsigned char   u8Last[16] = { 0 };
+
+    if (uLeft == 16) 
+    {
+        __m128i xmmLast = _mm_loadu_si128((const __m128i*)(pData + uIndex));
+        xmmLast = _mm_xor_si128(xmmLast, xmmK1);
+        _mm_storeu_si128((__m128i*)u8Last, xmmLast);
+    }
+    else 
+    {
+        for (unsigned i = 0; i < uLeft; ++i)
+            u8Last[i] = pData[uIndex + i];
+        
+        u8Last[uLeft] = 0x80;
+        
+        __m128i xmmTmp = _mm_loadu_si128((const __m128i*)u8Last);
+        xmmTmp = _mm_xor_si128(xmmTmp, xmmK2);
+        
+        _mm_storeu_si128((__m128i*)u8Last, xmmTmp);
+    }
+
+    __m128i xmmMlast = _mm_loadu_si128((const __m128i*)u8Last);
+    xmmX = _mm_xor_si128(xmmX, xmmMlast);
+    xmmX = _mm_xor_si128(xmmX, pEncKeySchedule[0]);
+    
+    for (int iRound = 1; iRound < 10; ++iRound)
+        xmmX = _mm_aesenc_si128(xmmX, pEncKeySchedule[iRound]);
+    
+    xmmX = _mm_aesenclast_si128(xmmX, pEncKeySchedule[10]);
+
+    return xmmX;
+}
+
+
+
+void Aes128EAXEncrypt(IN const unsigned char* pPlainText, IN unsigned __int64 uPlainTextSize, IN unsigned char* pCipherText, IN unsigned char* pAesKey, IN unsigned char* pAesIv, IN unsigned char* pAuthTag, OUT PBOOLEAN pbEncrypted) {
+
+    if (!pbEncrypted) return;
+
+    *pbEncrypted = FALSE;
+
+    if (!pPlainText || !pCipherText || !pAesKey || !pAesIv) return;
+
+    __m128i xmmKeySchedule[11];
+    Aes128CBCKeyExpansion(pAesKey, xmmKeySchedule);
+
+    __m128i xmmNonceTag = EaxComputeCmac128(pAesIv, 12, xmmKeySchedule);
+
+    __m128i xmmCtr = xmmNonceTag;
+    unsigned __int64 uIndex = 0;
+
+
+    while (uIndex + 16 <= uPlainTextSize) 
+    {
+        unsigned int uCtrLow = _mm_extract_epi32(xmmCtr, 3) + 1;
+        xmmCtr = _mm_insert_epi32(xmmCtr, uCtrLow, 3);
+
+        __m128i xmmKS = _mm_xor_si128(xmmCtr, xmmKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 10; ++iRound)
+            xmmKS = _mm_aesenc_si128(xmmKS, xmmKeySchedule[iRound]);
+        
+        xmmKS = _mm_aesenclast_si128(xmmKS, xmmKeySchedule[10]);
+
+        __m128i xmmPT = _mm_loadu_si128((const __m128i*)(pPlainText + uIndex));
+        __m128i xmmCT = _mm_xor_si128(xmmPT, xmmKS);
+        
+        _mm_storeu_si128((__m128i*)(pCipherText + uIndex), xmmCT);
+        uIndex += 16;
+    }
+
+    if (uIndex < uPlainTextSize) 
+    {
+        unsigned int uLeft = (unsigned int)(uPlainTextSize - uIndex);
+        unsigned int uCtrLow = _mm_extract_epi32(xmmCtr, 3) + 1;
+        
+        xmmCtr = _mm_insert_epi32(xmmCtr, uCtrLow, 3);
+        
+        __m128i xmmKS = _mm_xor_si128(xmmCtr, xmmKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 10; ++iRound)
+            xmmKS = _mm_aesenc_si128(xmmKS, xmmKeySchedule[iRound]);
+        
+        xmmKS = _mm_aesenclast_si128(xmmKS, xmmKeySchedule[10]);
+        
+        unsigned char u8KS[16];
+        _mm_storeu_si128((__m128i*)u8KS, xmmKS);
+        
+        for (unsigned int j = 0; j < uLeft; ++j)
+            pCipherText[uIndex + j] = pPlainText[uIndex + j] ^ u8KS[j];
+    }
+
+    __m128i xmmCmacCT = EaxComputeCmac128(pCipherText, uPlainTextSize, xmmKeySchedule);
+
+    __m128i xmmTag = _mm_xor_si128(xmmNonceTag, xmmCmacCT);
+    _mm_storeu_si128((__m128i*)pAuthTag, xmmTag);
+
+    *pbEncrypted = TRUE;
+}
+
+
+void Aes128EAXDecrypt(IN const unsigned char* pCipherText, IN unsigned __int64 uCipherTextSize, IN unsigned char* pPlainText, IN unsigned char* pAesKey, IN unsigned char* pAesIv, IN unsigned char* pAuthTag, OUT PBOOLEAN pbDecrypted) {
+    
+    if (!pbDecrypted) return;
+    
+    *pbDecrypted = FALSE;
+    
+    if (!pCipherText || !pPlainText || !pAesKey || !pAesIv || uCipherTextSize == 0) return;
+
+    __m128i xmmKeySchedule[11];
+    Aes128CBCKeyExpansion(pAesKey, xmmKeySchedule);
+
+    __m128i xmmNonceTag = EaxComputeCmac128(pAesIv, 12, xmmKeySchedule);
+    __m128i xmmCmacCT = EaxComputeCmac128(pCipherText, uCipherTextSize, xmmKeySchedule);
+    __m128i xmmCalcTag = _mm_xor_si128(xmmNonceTag, xmmCmacCT);
+
+    unsigned char u8Expected[16], u8Diff = 0;
+    _mm_storeu_si128((__m128i*)u8Expected, xmmCalcTag);
+    
+    for (int i = 0; i < 16; ++i)
+        u8Diff |= u8Expected[i] ^ pAuthTag[i];
+    
+	if (u8Diff != 0) return;            // Authentication Failed, Halt Decryption
+
+    __m128i xmmCtr = xmmNonceTag;
+    unsigned __int64 uIndex = 0;
+
+    while (uIndex + 16 <= uCipherTextSize) 
+    {
+        unsigned int uCtrLow = _mm_extract_epi32(xmmCtr, 3) + 1;
+        xmmCtr = _mm_insert_epi32(xmmCtr, uCtrLow, 3);
+
+        __m128i xmmKS = _mm_xor_si128(xmmCtr, xmmKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 10; ++iRound)
+            xmmKS = _mm_aesenc_si128(xmmKS, xmmKeySchedule[iRound]);
+        
+        xmmKS = _mm_aesenclast_si128(xmmKS, xmmKeySchedule[10]);
+
+        __m128i xmmCT = _mm_loadu_si128((const __m128i*)(pCipherText + uIndex));
+        __m128i xmmPT = _mm_xor_si128(xmmCT, xmmKS);
+        _mm_storeu_si128((__m128i*)(pPlainText + uIndex), xmmPT);
+
+        uIndex += 16;
+    }
+
+    if (uIndex < uCipherTextSize) 
+    {
+        unsigned int uLeft = (unsigned int)(uCipherTextSize - uIndex);
+        unsigned int uCtrLow = _mm_extract_epi32(xmmCtr, 3) + 1;
+        
+        xmmCtr = _mm_insert_epi32(xmmCtr, uCtrLow, 3);
+
+        __m128i xmmKS = _mm_xor_si128(xmmCtr, xmmKeySchedule[0]);
+        
+        for (int iRound = 1; iRound < 10; ++iRound)
+            xmmKS = _mm_aesenc_si128(xmmKS, xmmKeySchedule[iRound]);
+        
+        xmmKS = _mm_aesenclast_si128(xmmKS, xmmKeySchedule[10]);
+
+        unsigned char u8KS[16];
+        _mm_storeu_si128((__m128i*)u8KS, xmmKS);
+        
+        for (unsigned int j = 0; j < uLeft; ++j)
+            pPlainText[uIndex + j] = pCipherText[uIndex + j] ^ u8KS[j];
+    }
+
+    *pbDecrypted = TRUE;
+}
+
+
+
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
+// ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
