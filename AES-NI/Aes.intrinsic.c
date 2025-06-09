@@ -123,6 +123,23 @@ static void Aes256CBCKeyExpansion(const unsigned char* pAesKey, __m128i* pKeySch
     pKeySchedule[14] = xmmTemp1;
 }
 
+
+static void Aes256CBCKeyExpansionInv(const __m128i* pEncKeySchedule, __m128i* pDecKeySchedule) {
+
+    __m128i xmmTemp;
+
+    pDecKeySchedule[0] = pEncKeySchedule[14];
+
+    for (int iRound = 1; iRound < 14; ++iRound)
+    {
+        xmmTemp = pEncKeySchedule[14 - iRound];
+        pDecKeySchedule[iRound] = _mm_aesimc_si128(xmmTemp);
+    }
+
+	pDecKeySchedule[14] = pEncKeySchedule[0];
+}
+
+
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 
@@ -214,6 +231,23 @@ static void Aes128CBCKeyExpansion(const unsigned char* pAesKey, __m128i* pKeySch
     xmmTemp1 = _mm_xor_si128(xmmTemp1, _mm_slli_si128(xmmTemp1, 4));
     pKeySchedule[10] = _mm_xor_si128(xmmTemp1, xmmTemp2);
 }
+
+
+static void Aes128CBCKeyExpansionInv(const __m128i* pEncKeySchedule, __m128i* pDecKeySchedule) {
+
+    __m128i xmmTemp;
+
+    pDecKeySchedule[0] = pEncKeySchedule[10];
+
+    for (int iRound = 1; iRound < 10; ++iRound)
+    {
+        xmmTemp = pEncKeySchedule[10 - iRound];
+        pDecKeySchedule[iRound] = _mm_aesimc_si128(xmmTemp);
+    }
+
+    pDecKeySchedule[10] = pEncKeySchedule[0];
+}
+
 
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
 // ==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==-==
