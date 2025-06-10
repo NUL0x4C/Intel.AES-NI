@@ -20,8 +20,5 @@
 
 **TODO:**
 * OFB
-* XTS
-* LRW
 * CCM
-* CMAC/GMAC
 * SIV
